@@ -1120,6 +1120,23 @@ function Informe({
     onClick: () => window.print()
   }, "Descargar PDF"), /*#__PURE__*/React.createElement("button", {
     className: "btn-fant",
+    onClick: () => {
+      const esc = s => '"' + String(s === undefined || s === null ? "" : s).replace(/"/g, '""') + '"';
+      const filas = [["Participante", "Anónimo", "Pregunta", "Tipo", "Respuesta", "Enviada"]];
+      preguntas.forEach(p => {
+        respuestas.filter(r => r.pregunta_id === p.id).forEach(r => {
+          const per = participantes[r.dispositivo];
+          filas.push([per && per.nombre ? per.nombre : "Anónimo", per && per.es_anonimo ? "sí" : "no", p.enunciado, p.tipo, textoValor(p, r.valor), r.creada_en]);
+        });
+      });
+      const csv = "\uFEFF" + filas.map(f => f.map(esc).join(",")).join("\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      a.download = corrida.nombre.replace(/\s+/g, "_") + ".csv";
+      a.click();
+    }
+  }, "Descargar CSV"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-fant",
     onClick: onCerrar
   }, "Volver al panel")), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1211,6 +1228,7 @@ function Admin({
   const [participantes, setParticipantes] = useState({});
   const [conteos, setConteos] = useState({});
   const [historico, setHistorico] = useState([]);
+  const [guardado, setGuardado] = useState(null);
   const [vista, setVista] = useState("panel");
   const [aviso, setAviso] = useState("");
   const [ocupado, setOcupado] = useState(false);
@@ -1404,6 +1422,34 @@ function Admin({
     a.download = corrida.nombre.replace(/\s+/g, "_") + ".csv";
     a.click();
   };
+  const abrirGuardado = async (id) => {
+    setOcupado(true);
+    const { data, error } = await sb.from("pulso_historico").select("*").eq("id", id).single();
+    setOcupado(false);
+    if (error || !data) {
+      setAviso("No se pudo abrir ese pulso.");
+      setTimeout(() => setAviso(""), 4000);
+      return;
+    }
+    const d = data.datos || {};
+    const mapa = {};
+    (d.participantes || []).forEach(p => mapa[p.dispositivo] = p);
+    setGuardado({
+      corrida: { nombre: data.nombre, creada_en: d.creada_en || data.guardado_en },
+      preguntas: d.preguntas || [],
+      respuestas: d.respuestas || [],
+      participantes: mapa
+    });
+  };
+  if (guardado) {
+    return /*#__PURE__*/React.createElement(Informe, {
+      corrida: guardado.corrida,
+      preguntas: guardado.preguntas,
+      respuestas: guardado.respuestas,
+      participantes: guardado.participantes,
+      onCerrar: () => setGuardado(null)
+    });
+  }
   if (vista === "informe") {
     return /*#__PURE__*/React.createElement(Informe, {
       corrida: corrida,
@@ -1470,22 +1516,42 @@ function Admin({
     pregunta: p,
     respuestas: respuestas.filter(r => r.pregunta_id === p.id),
     participantes: participantes
-  }))), historico.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement("div", {
     className: "tarjeta"
   }, /*#__PURE__*/React.createElement("h2", {
     style: {
       fontSize: "1.1rem",
       marginBottom: 12
     }
-  }, "Histórico de pulsos"), historico.map(h => /*#__PURE__*/React.createElement("div", {
+  }, "Histórico de pulsos"), historico.length === 0 ? /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "var(--tenue)",
+      fontSize: ".9rem",
+      margin: 0
+    }
+  }, "Todavía no has guardado ninguno. Al terminar una ronda, presiona “Guardar pulso” y aparecerá acá.") : historico.map(h => /*#__PURE__*/React.createElement("button", {
     className: "hist-fila",
-    key: h.id
+    key: h.id,
+    style: {
+      width: "100%",
+      textAlign: "left",
+      cursor: "pointer"
+    },
+    onClick: () => abrirGuardado(h.id)
   }, /*#__PURE__*/React.createElement("span", null, h.nombre), /*#__PURE__*/React.createElement("span", {
     style: {
       color: "var(--tenue)",
-      fontSize: ".85rem"
+      fontSize: ".85rem",
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      flexShrink: 0
     }
-  }, fechaLegible(h.guardado_en))))));
+  }, fechaLegible(h.guardado_en), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "var(--dorado)"
+    }
+  }, "→"))))));
 }
 
 /* ============================================================
