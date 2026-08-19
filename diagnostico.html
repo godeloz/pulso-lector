@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnóstico</title>
+<style>
+body{margin:0;padding:26px 18px 60px;background:#F7F4EC;color:#123128;
+  font-family:system-ui,-apple-system,sans-serif;line-height:1.6}
+.env{max-width:680px;margin:0 auto}
+h1{font-size:1.35rem;margin:0 0 4px}
+.sub{color:rgba(18,49,40,.6);font-size:.9rem;margin-bottom:24px}
+.p{background:#FFFDF7;border:1px solid rgba(18,49,40,.14);border-radius:12px;
+  padding:15px 17px;margin-bottom:11px}
+.t{display:flex;align-items:center;gap:10px;font-weight:600;font-size:.97rem}
+.ic{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
+  color:#fff;font-size:.8rem;flex-shrink:0}
+.ok .ic{background:#4C8577}.mal .ic{background:#E2593F}.esp .ic{background:#C9962F}
+.d{font-size:.86rem;color:rgba(18,49,40,.7);margin-top:8px;white-space:pre-wrap;
+  font-family:ui-monospace,SFMono-Regular,monospace;line-height:1.55}
+.fix{font-size:.88rem;margin-top:10px;padding:11px 13px;background:rgba(226,89,63,.09);
+  border-left:3px solid #E2593F;border-radius:0 8px 8px 0}
+a{color:#1B4B3F}
+</style>
+</head>
+<body>
+<div class="env">
+  <h1>Diagnóstico</h1>
+  <div class="sub">Revisa cada pieza de la instalación y te dice cuál está fallando.</div>
+  <div id="salida"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js" onerror="window.__configFallo=true"></script>
+<script>
+const salida = document.getElementById("salida");
+
+function paso(estado, titulo, detalle, arreglo) {
+  const cls = estado === true ? "ok" : estado === false ? "mal" : "esp";
+  const ic = estado === true ? "✓" : estado === false ? "✕" : "…";
+  const div = document.createElement("div");
+  div.className = "p " + cls;
+  div.innerHTML =
+    '<div class="t"><span class="ic">' + ic + '</span><span>' + titulo + '</span></div>' +
+    (detalle ? '<div class="d">' + String(detalle).replace(/</g, "&lt;") + '</div>' : '') +
+    (arreglo ? '<div class="fix">' + arreglo + '</div>' : '');
+  salida.appendChild(div);
+  return div;
+}
+
+(async function () {
+  // 1. Librería
+  if (typeof supabase === "undefined") {
+    paso(false, "Librería de Supabase", "No se cargó desde cdn.jsdelivr.net",
+      "La red está bloqueando el CDN. Prueba con otra conexión o desde datos móviles.");
+    return;
+  }
+  paso(true, "Librería de Supabase cargada");
+
+  // 2. config.js
+  if (window.__configFallo || typeof CONFIG === "undefined") {
+    paso(false, "Archivo config.js", "No se encontró o no define CONFIG",
+      "Debe estar en la misma carpeta que este archivo y llamarse exactamente <b>config.js</b> (todo en minúsculas).");
+    return;
+  }
+  paso(true, "Archivo config.js encontrado");
+
+  // 3. URL
+  const url = CONFIG.SUPABASE_URL || "";
+  if (!url || url.indexOf("PEGA_AQUI") === 0) {
+    paso(false, "Dirección del proyecto", "SUPABASE_URL todavía tiene el texto de ejemplo",
+      "Cópiala de Supabase → Project Settings → API → Project URL.");
+    return;
+  }
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(url.trim())) {
+    paso(false, "Dirección del proyecto", "Valor actual: " + url,
+      "Debe ser exactamente <b>https://xxxxxxxx.supabase.co</b>, sin barras ni rutas al final.");
+    return;
+  }
+  paso(true, "Dirección del proyecto válida", url);
+
+  // 4. Llave
+  const llave = CONFIG.SUPABASE_PUBLISHABLE_KEY || CONFIG.SUPABASE_ANON_KEY || "";
+  if (!llave || llave.indexOf("PEGA_AQUI") === 0) {
+    paso(false, "Llave del proyecto", "Ninguna llave configurada",
+      "Pega la <b>publishable key</b> (empieza con sb_publishable_) en config.js.");
+    return;
+  }
+  if (llave.indexOf("sb_secret_") === 0) {
+    paso(false, "Llave del proyecto", "Es una SECRET key",
+      "Esa llave salta toda la seguridad y no debe ir en el navegador. Usa la <b>publishable key</b>.");
+    return;
+  }
+  const tipo = llave.indexOf("sb_publishable_") === 0 ? "publishable key"
+             : llave.indexOf("ey") === 0 ? "anon key (antigua, sigue sirviendo)"
+             : "formato no reconocido";
+  paso(llave.indexOf("sb_publishable_") === 0 || llave.indexOf("ey") === 0,
+       "Llave del proyecto", tipo + " · " + llave.slice(0, 22) + "…");
+
+  const sb = supabase.createClient(url.trim().replace(/\/$/, ""), llave);
+
+  // 5. Tablas
+  const esperando = paso(null, "Conectando con la base de datos…");
+  const { data: pr, error: e1 } = await sb.from("pulso_preguntas").select("*").order("orden");
+  esperando.remove();
+
+  if (e1) {
+    const m = e1.message || "";
+    paso(false, "Tabla de preguntas", m + (e1.hint ? "\n" + e1.hint : ""),
+      /relation|does not exist|schema cache/i.test(m)
+        ? "Las tablas no existen. Abre Supabase → SQL Editor → New query, pega <b>schema.sql</b> completo y presiona Run."
+        : /JWT|api key|Invalid/i.test(m)
+        ? "La llave no corresponde a este proyecto. Vuelve a copiarla desde el mismo proyecto de la URL."
+        : "Revisa que hayas ejecutado schema.sql sin errores.");
+    return;
+  }
+  if (!pr || !pr.length) {
+    paso(false, "Tabla de preguntas", "La tabla existe pero está vacía",
+      "Ejecuta de nuevo el bloque de semilla al final de <b>schema.sql</b>.");
+    return;
+  }
+  paso(true, "Preguntas cargadas", pr.length + " preguntas: " + pr.map(p => p.orden + ". " + p.tipo).join("\n"));
+
+  // 6. Corrida
+  const { data: co, error: e2 } = await sb.from("pulso_corridas").select("*")
+    .in("estado", ["en_vivo", "finalizada"]).order("creada_en", { ascending: false }).limit(1);
+  if (e2) {
+    paso(false, "Corrida activa", e2.message, "Revisa las políticas de seguridad de pulso_corridas.");
+    return;
+  }
+  if (!co || !co.length) {
+    paso(false, "Corrida activa", "No hay ninguna corrida en_vivo",
+      "Ejecuta el último bloque de <b>schema.sql</b>, o crea una fila en pulso_corridas con estado <b>en_vivo</b> e indice_activo <b>1</b>.");
+    return;
+  }
+  paso(true, "Corrida activa", co[0].nombre + "\nPregunta activa: " + co[0].indice_activo + "\nEstado: " + co[0].estado);
+
+  // 7. Realtime
+  const espRt = paso(null, "Probando actualización en vivo…");
+  await new Promise((res) => {
+    let listo = false;
+    const canal = sb.channel("diag-" + Date.now())
+      .on("postgres_changes", { event: "*", schema: "public", table: "pulso_corridas" }, () => {})
+      .subscribe((st) => {
+        if (listo) return;
+        if (st === "SUBSCRIBED") {
+          listo = true; espRt.remove();
+          paso(true, "Actualización en vivo funcionando");
+          sb.removeChannel(canal); res();
+        } else if (st === "CHANNEL_ERROR" || st === "TIMED_OUT") {
+          listo = true; espRt.remove();
+          paso(false, "Actualización en vivo", "Estado: " + st,
+            "El pulso funciona igual, pero hay que refrescar para ver los cambios. En Supabase, revisa que las tablas estén en la publicación <b>supabase_realtime</b>.");
+          res();
+        }
+      });
+    setTimeout(() => { if (!listo) { listo = true; espRt.remove();
+      paso(false, "Actualización en vivo", "No respondió a tiempo",
+        "El pulso funciona, pero sin refresco automático."); res(); } }, 9000);
+  });
+
+  paso(true, "Todo listo", "Ya puedes abrir index.html y correr el pulso.");
+})().catch((e) => {
+  paso(false, "Error inesperado", (e && e.message) || String(e));
+});
+</script>
+</body>
+</html>

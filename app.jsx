@@ -5,7 +5,17 @@ const { useState, useEffect, useRef, useCallback } = React;
    ============================================================ */
 
 const LLAVE = CONFIG.SUPABASE_PUBLISHABLE_KEY || CONFIG.SUPABASE_ANON_KEY;
-const sb = supabase.createClient(CONFIG.SUPABASE_URL, LLAVE);
+
+let sb;
+try {
+  sb = supabase.createClient(CONFIG.SUPABASE_URL, LLAVE);
+} catch (e) {
+  if (window.__pintarError) {
+    window.__pintarError("No se pudo conectar con Supabase",
+      e.message + "\n\nRevisa que SUPABASE_URL en config.js sea la dirección completa, con https://");
+  }
+  throw e;
+}
 
 const LS = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -979,7 +989,14 @@ function App() {
       setMias(LS.get("pulso_mias_" + act.id, []));
       setListo(true);
     } catch (e) {
-      setFallo("No pudimos conectarnos. Revisa tu conexión y vuelve a cargar la página.");
+      const msg = (e && (e.message || e.hint)) || "Error desconocido";
+      setFallo(
+        /relation|does not exist|schema cache/i.test(msg)
+          ? "Las tablas no existen todavía. Ejecuta schema.sql completo en el SQL Editor de Supabase."
+          : /JWT|api key|Invalid/i.test(msg)
+          ? "La llave de config.js no es válida para este proyecto. Copia de nuevo la publishable key."
+          : "No pudimos conectarnos: " + msg
+      );
       setListo(true);
     }
   }, []);
@@ -1122,4 +1139,10 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("raiz")).render(<App />);
+try {
+  ReactDOM.createRoot(document.getElementById("raiz")).render(<App />);
+  window.__APP_OK = true;
+} catch (e) {
+  if (window.__pintarError) window.__pintarError("La aplicación falló al dibujarse", e.message);
+  else throw e;
+}

@@ -236,11 +236,72 @@ textarea.campo{resize:vertical;min-height:130px}
 <body>
 <div id="raiz"><div class="cargando">Cargando…</div></div>
 
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script>
+window.__pintarError = function (titulo, detalle) {
+  var r = document.getElementById("raiz");
+  if (!r || window.__APP_OK) return;
+  r.innerHTML =
+    '<div class="env"><header class="cab"><h1>Nuestras próximas lecturas</h1></header>' +
+    '<div class="tarjeta"><h2 style="font-size:1.15rem;margin-bottom:10px">' + titulo + '</h2>' +
+    '<div class="error" style="margin-top:0;white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:.82rem">' +
+    String(detalle).replace(/</g, "&lt;") + '</div>' +
+    '<p style="font-size:.9rem;color:var(--tenue);margin-top:16px">' +
+    'Abre <a href="diagnostico.html" style="color:var(--verde)">diagnostico.html</a> ' +
+    'para revisar pieza por pieza qué está fallando.</p></div></div>';
+};
+window.addEventListener("error", function (e) {
+  window.__pintarError("La aplicación no pudo iniciarse", (e.message || "Error") + (e.filename ? "\n" + e.filename + ":" + e.lineno : ""));
+});
+window.addEventListener("unhandledrejection", function (e) {
+  window.__pintarError("Falló una operación de red", (e.reason && e.reason.message) || e.reason || "Error desconocido");
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js"></script>
 <script src="config.js"></script>
 <script type="text/babel" src="app.jsx" data-presets="react"></script>
+
+<script>
+window.addEventListener("load", function () {
+  var faltan = [];
+  if (typeof React === "undefined") faltan.push("React");
+  if (typeof ReactDOM === "undefined") faltan.push("ReactDOM");
+  if (typeof supabase === "undefined") faltan.push("supabase-js");
+  if (typeof Babel === "undefined") faltan.push("Babel");
+  if (faltan.length) {
+    window.__pintarError("No se cargaron las librerías",
+      "Falta: " + faltan.join(", ") + "\n\nSuele ser la conexión bloqueando el CDN cdn.jsdelivr.net.");
+    return;
+  }
+  if (typeof CONFIG === "undefined") {
+    window.__pintarError("No se cargó config.js",
+      "El archivo config.js no está junto a index.html, o tiene otro nombre.\nRevisa mayúsculas: debe ser exactamente config.js");
+    return;
+  }
+  if (!CONFIG.SUPABASE_URL || CONFIG.SUPABASE_URL.indexOf("PEGA_AQUI") === 0) {
+    window.__pintarError("Falta la dirección del proyecto",
+      "En config.js, SUPABASE_URL todavía tiene el texto de ejemplo.\nDebe ser algo como https://xxxxxxxx.supabase.co");
+    return;
+  }
+  var llave = CONFIG.SUPABASE_PUBLISHABLE_KEY || CONFIG.SUPABASE_ANON_KEY;
+  if (!llave || llave.indexOf("PEGA_AQUI") === 0) {
+    window.__pintarError("Falta la llave del proyecto",
+      "En config.js, SUPABASE_PUBLISHABLE_KEY todavía tiene el texto de ejemplo.\nDebe empezar con sb_publishable_");
+    return;
+  }
+  setTimeout(function () {
+    if (!window.__APP_OK) {
+      window.__pintarError("app.jsx no se ejecutó",
+        "El navegador cargó todo menos la aplicación.\n\nCausas frecuentes:\n" +
+        "· Abriste el archivo con doble clic (file://). Necesita un servidor.\n" +
+        "· app.jsx no está junto a index.html o tiene otro nombre.\n" +
+        "· GitHub Pages todavía no terminó de publicar los cambios.");
+    }
+  }, 4000);
+});
+</script>
 </body>
 </html>
