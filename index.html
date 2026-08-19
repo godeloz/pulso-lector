@@ -177,9 +177,11 @@ textarea.campo{resize:vertical;min-height:130px}
 /* ---------- navegación / avisos ---------- */
 .salto{position:sticky;bottom:16px;z-index:20;display:flex;justify-content:center;
   padding-bottom:env(safe-area-inset-bottom)}
-.salto button{background:var(--verde-oscuro);color:var(--crema);border-radius:999px;
+.salto button,.salto-top button{background:var(--verde-oscuro);color:var(--crema);border-radius:999px;
   padding:14px 26px;font-weight:500;box-shadow:0 6px 22px rgba(18,49,40,.24);
   display:flex;align-items:center;gap:9px;min-height:50px}
+.salto-top{display:flex;justify-content:center;margin:2px 0 4px}
+.salto-top button{width:100%;max-width:420px;justify-content:center}
 .aviso{text-align:center;padding:44px 22px}
 .aviso .ico{font-family:var(--display);font-size:2rem;color:var(--dorado);margin-bottom:12px}
 .aviso p{color:var(--tenue);margin:6px 0 0}

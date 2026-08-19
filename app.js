@@ -1465,7 +1465,7 @@ function Admin({
     style: {
       marginBottom: 22
     }
-  }, cerradas.map(p => /*#__PURE__*/React.createElement(BloqueResultado, {
+  }, cerradas.slice().reverse().map(p => /*#__PURE__*/React.createElement(BloqueResultado, {
     key: p.id,
     pregunta: p,
     respuestas: respuestas.filter(r => r.pregunta_id === p.id),
@@ -1749,19 +1749,19 @@ function App() {
   return /*#__PURE__*/React.createElement("div", {
     className: "env"
   }, cabecera, /*#__PURE__*/React.createElement("div", {
+    className: "salto-top"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setVista("activa")
+  }, respondida ? "Ver la pregunta activa" : "Siguiente pregunta", " →")), /*#__PURE__*/React.createElement("div", {
+    className: "hilo"
+  }, /*#__PURE__*/React.createElement("span", null, cerradas.length === 1 ? "La primera respuesta del grupo" : "Lo que hemos respondido")), /*#__PURE__*/React.createElement("div", {
     className: "tarjeta"
-  }, cerradas.map(p => /*#__PURE__*/React.createElement(BloqueResultado, {
+  }, cerradas.slice().reverse().map(p => /*#__PURE__*/React.createElement(BloqueResultado, {
     key: p.id,
     pregunta: p,
     respuestas: respuestas.filter(r => r.pregunta_id === p.id),
     participantes: participantes
-  }))), /*#__PURE__*/React.createElement("div", {
-    className: "hilo"
-  }, /*#__PURE__*/React.createElement("span", null, "Vamos en la pregunta ", ROMANOS[corrida.indice_activo])), /*#__PURE__*/React.createElement("div", {
-    className: "salto"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => setVista("activa")
-  }, respondida ? "Ver la pregunta activa" : "Ir a la pregunta activa", " ↓")));
+  }))));
 }
 try {
   ReactDOM.createRoot(document.getElementById("raiz")).render(/*#__PURE__*/React.createElement(App, null));
