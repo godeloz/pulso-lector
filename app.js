@@ -1292,6 +1292,10 @@ function Admin({
       event: "*",
       schema: "public",
       table: "pulso_participantes"
+    }, cargar).on("postgres_changes", {
+      event: "INSERT",
+      schema: "public",
+      table: "pulso_respuestas"
     }, cargar).subscribe();
     return () => sb.removeChannel(canal);
   }, [sesion, cargar]);
@@ -1360,9 +1364,11 @@ function Admin({
     className: "cargando"
   }, "No hay ninguna corrida. Crea una desde el panel de Supabase.");
   const total = preguntas.length;
-  const activa = preguntas.find(p => p.orden === corrida.indice_activo);
-  const cerradas = preguntas.filter(p => p.orden < corrida.indice_activo);
-  const terminada = corrida.indice_activo > total;
+  const abiertoM = (corrida.modo || "vivo") === "abierto";
+  const activa = abiertoM ? null : preguntas.find(p => p.orden === corrida.indice_activo);
+  const cerradas = abiertoM ? preguntas.filter(p => respuestas.some(r => r.pregunta_id === p.id)) : preguntas.filter(p => p.orden < corrida.indice_activo);
+  const terminada = abiertoM ? false : corrida.indice_activo > total;
+  const puedeGuardar = abiertoM || terminada;
   const comenzar = async () => {
     setOcupado(true);
     await sb.from("pulso_corridas").update({
@@ -1526,7 +1532,7 @@ function Admin({
     className: "adm-barra"
   }, /*#__PURE__*/React.createElement("h2", null, corrida.nombre), /*#__PURE__*/React.createElement("div", {
     className: "adm-est"
-  }, terminada ? `Ronda terminada · ${Object.keys(participantes).length} participantes` : `Pregunta ${corrida.indice_activo} de ${total} · ${Object.keys(participantes).length} participantes`), !terminada && activa && /*#__PURE__*/React.createElement("div", {
+  }, abiertoM ? `Sondeo abierto · ${Object.keys(participantes).length} participantes · ${respuestas.length} respuestas` : terminada ? `Ronda terminada · ${Object.keys(participantes).length} participantes` : `Pregunta ${corrida.indice_activo} de ${total} · ${Object.keys(participantes).length} participantes`), !terminada && activa && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 14,
       paddingTop: 14,
@@ -1550,7 +1556,12 @@ function Admin({
     corrida: corrida,
     pregunta: activa,
     compacta: true,
-    onExpirar: cargar
+    onExpirar: async () => {
+      try {
+        await sb.rpc("pulso_avanzar_si_expiro", { p_corrida: corrida.id });
+      } catch (e) {}
+      cargar();
+    }
   })))), /*#__PURE__*/React.createElement("div", {
     className: "adm-acc"
   }, !terminada && corrida.modo !== "abierto" && !corrida.pregunta_abierta_en && /*#__PURE__*/React.createElement("button", {
@@ -1563,7 +1574,7 @@ function Admin({
   }, "+30 segundos"), !terminada && corrida.modo !== "abierto" && corrida.pregunta_abierta_en && /*#__PURE__*/React.createElement("button", {
     onClick: pasarYa,
     disabled: ocupado
-  }, "Pasar ya"), terminada && /*#__PURE__*/React.createElement("button", {
+  }, "Pasar ya"), puedeGuardar && /*#__PURE__*/React.createElement("button", {
     className: "pri",
     onClick: guardar,
     disabled: ocupado
@@ -1777,6 +1788,20 @@ function App() {
     }).on("postgres_changes", {
       event: "INSERT",
       schema: "public",
+      table: "pulso_respuestas"
+    }, m => {
+      const nr = m.new;
+      if (!nr || !nr.pregunta_id) return;
+      setRespuestas(rs => {
+        const i = rs.findIndex(r => r.pregunta_id === nr.pregunta_id && r.dispositivo === nr.dispositivo);
+        if (i === -1) return [...rs, nr];
+        const c = [...rs];
+        c[i] = nr;
+        return c;
+      });
+    }).on("postgres_changes", {
+      event: "INSERT",
+      schema: "public",
       table: "pulso_participantes"
     }, m => {
       const n = m.new;
@@ -1819,7 +1844,15 @@ function App() {
     const nuevas = [...mias, pregunta.id];
     setMias(nuevas);
     LS.set("pulso_mias_" + corrida.id, nuevas);
+    setRespuestas(rs => rs.some(r => r.pregunta_id === pregunta.id && r.dispositivo === DISPOSITIVO) ? rs : [...rs, {
+      corrida_id: corrida.id,
+      pregunta_id: pregunta.id,
+      dispositivo: DISPOSITIVO,
+      valor,
+      creada_en: new Date().toISOString()
+    }]);
     setPausaEn(pregunta.id);
+    cargar();
     setConteos(c => ({
       ...c,
       [pregunta.id]: (c[pregunta.id] || 0) + 1
