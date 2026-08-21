@@ -46,6 +46,10 @@ function idDispositivo() {
 const DISPOSITIVO = idDispositivo();
 const PALETA = ["#4C8577", "#B77A46", "#7C9FC2", "#D98CA0", "#DDAE45", "#7FA98B", "#E2593F", "#C9962F"];
 const COLORES_AVE = ["#4C8577", "#B77A46", "#7C9FC2"];
+const AJ = () => window.__AJUSTES || {};
+const TITULO = () => AJ().titulo || CONFIG.TITULO || "Sondeo";
+const BAJADA = () => AJ().bajada !== undefined && AJ().bajada !== null ? AJ().bajada : (CONFIG.BAJADA || "");
+
 const ROMANOS = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 function fechaLegible(iso) {
   const d = new Date(iso);
@@ -912,7 +916,7 @@ function Ingreso({
       marginTop: 0,
       marginBottom: 20
     }
-  }, CONFIG.BAJADA), /*#__PURE__*/React.createElement("label", {
+  }, BAJADA()), /*#__PURE__*/React.createElement("label", {
     style: {
       display: "block",
       fontSize: ".88rem",
@@ -1450,6 +1454,20 @@ function Admin({
       onCerrar: () => setGuardado(null)
     });
   }
+  if (vista === "editor") {
+    if (!window.PulsoEditor) {
+      return /*#__PURE__*/React.createElement("div", {
+        className: "cargando"
+      }, "Falta editor.js. Súbelo junto a index.html.");
+    }
+    return /*#__PURE__*/React.createElement(window.PulsoEditor, {
+      sb: sb,
+      onCerrar: () => {
+        setVista("panel");
+        cargar();
+      }
+    });
+  }
   if (vista === "informe") {
     return /*#__PURE__*/React.createElement(Informe, {
       corrida: corrida,
@@ -1492,6 +1510,8 @@ function Admin({
     onClick: guardar,
     disabled: ocupado
   }, "Guardar pulso"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setVista("editor")
+  }, "Preguntas y ajustes"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setVista("informe")
   }, "Ver informe y PDF"), /*#__PURE__*/React.createElement("button", {
     onClick: descargarCSV
@@ -1578,6 +1598,12 @@ function App() {
   }, []);
   const cargar = useCallback(async () => {
     try {
+      const { data: aj } = await sb.from("pulso_ajustes").select("*");
+      if (aj) {
+        const m = {};
+        aj.forEach(x => m[x.clave] = x.valor);
+        window.__AJUSTES = m;
+      }
       const {
         data: pr,
         error: e1
@@ -1704,7 +1730,7 @@ function App() {
       className: "env"
     }, /*#__PURE__*/React.createElement("header", {
       className: "cab"
-    }, /*#__PURE__*/React.createElement("h1", null, CONFIG.TITULO), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h1", null, TITULO()), /*#__PURE__*/React.createElement("div", {
       className: "sub"
     }, "Administración")), /*#__PURE__*/React.createElement(Admin, {
       preguntas: preguntas
@@ -1712,7 +1738,7 @@ function App() {
   }
   const cabecera = /*#__PURE__*/React.createElement("header", {
     className: "cab"
-  }, /*#__PURE__*/React.createElement("h1", null, CONFIG.TITULO), corrida && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h1", null, TITULO()), corrida && /*#__PURE__*/React.createElement("div", {
     className: "sub"
   }, fechaLegible(corrida.creada_en)));
   if (!listo) return /*#__PURE__*/React.createElement("div", {
