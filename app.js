@@ -977,7 +977,8 @@ function PreguntaActiva({
   yaRespondio,
   onEnviar,
   onVolver,
-  hayCerradas
+  hayCerradas,
+  onExpirar
 }) {
   const [valor, setValor] = useState(null);
   const [err, setErr] = useState("");
@@ -1035,7 +1036,11 @@ function PreguntaActiva({
   }
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "tarjeta"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, window.CuentaRegresiva && /*#__PURE__*/React.createElement(window.CuentaRegresiva, {
+    corrida: corrida,
+    pregunta: pregunta,
+    onExpirar: onExpirar
+  }), /*#__PURE__*/React.createElement("div", {
     className: "preg-num"
   }, "Pregunta ", ROMANOS[pregunta.orden]), /*#__PURE__*/React.createElement("div", {
     className: "preg-txt"
@@ -1358,13 +1363,53 @@ function Admin({
   const activa = preguntas.find(p => p.orden === corrida.indice_activo);
   const cerradas = preguntas.filter(p => p.orden < corrida.indice_activo);
   const terminada = corrida.indice_activo > total;
-  const cerrarPregunta = async () => {
+  const comenzar = async () => {
+    setOcupado(true);
+    await sb.from("pulso_corridas").update({
+      pregunta_abierta_en: new Date().toISOString(),
+      indice_activo: 1
+    }).eq("id", corrida.id);
+    await cargar();
+    setOcupado(false);
+    setAviso("Ronda iniciada. El reloj está corriendo.");
+    setTimeout(() => setAviso(""), 4000);
+  };
+
+  const pasarYa = async () => {
     setOcupado(true);
     const nuevo = corrida.indice_activo + 1;
     await sb.from("pulso_corridas").update({
       indice_activo: nuevo,
+      pregunta_abierta_en: nuevo > total ? null : new Date().toISOString(),
       estado: nuevo > total ? "finalizada" : "en_vivo",
       cerrada_en: nuevo > total ? new Date().toISOString() : null
+    }).eq("id", corrida.id);
+    await cargar();
+    setOcupado(false);
+  };
+
+  const masTiempo = async (seg) => {
+    if (!corrida.pregunta_abierta_en) return;
+    setOcupado(true);
+    const nueva = new Date(new Date(corrida.pregunta_abierta_en).getTime() + seg * 1000);
+    await sb.from("pulso_corridas").update({
+      pregunta_abierta_en: nueva.toISOString()
+    }).eq("id", corrida.id);
+    await cargar();
+    setOcupado(false);
+  };
+
+  const cambiarModo = async (modo) => {
+    if (respuestas.length > 0) {
+      setAviso("Ya hay respuestas: duplica el sondeo para cambiar de modo.");
+      setTimeout(() => setAviso(""), 5000);
+      return;
+    }
+    setOcupado(true);
+    await sb.from("pulso_corridas").update({
+      modo,
+      pregunta_abierta_en: null,
+      indice_activo: 1
     }).eq("id", corrida.id);
     await cargar();
     setOcupado(false);
@@ -1499,13 +1544,26 @@ function Admin({
       fontSize: ".9rem",
       opacity: .8
     }
-  }, conteos[activa.id] || 0, " ", (conteos[activa.id] || 0) === 1 ? "respuesta recibida" : "respuestas recibidas")), /*#__PURE__*/React.createElement("div", {
+  }, conteos[activa.id] || 0, " ", (conteos[activa.id] || 0) === 1 ? "respuesta recibida" : "respuestas recibidas", corrida.pregunta_abierta_en && window.CuentaRegresiva && /*#__PURE__*/React.createElement("span", {
+    style: { marginLeft: 12 }
+  }, "· quedan ", /*#__PURE__*/React.createElement(window.CuentaRegresiva, {
+    corrida: corrida,
+    pregunta: activa,
+    compacta: true,
+    onExpirar: cargar
+  })))), /*#__PURE__*/React.createElement("div", {
     className: "adm-acc"
-  }, !terminada && /*#__PURE__*/React.createElement("button", {
+  }, !terminada && corrida.modo !== "abierto" && !corrida.pregunta_abierta_en && /*#__PURE__*/React.createElement("button", {
     className: "pri",
-    onClick: cerrarPregunta,
+    onClick: comenzar,
     disabled: ocupado
-  }, "Cerrar pregunta"), terminada && /*#__PURE__*/React.createElement("button", {
+  }, "Comenzar ronda"), !terminada && corrida.modo !== "abierto" && corrida.pregunta_abierta_en && /*#__PURE__*/React.createElement("button", {
+    onClick: () => masTiempo(30),
+    disabled: ocupado
+  }, "+30 segundos"), !terminada && corrida.modo !== "abierto" && corrida.pregunta_abierta_en && /*#__PURE__*/React.createElement("button", {
+    onClick: pasarYa,
+    disabled: ocupado
+  }, "Pasar ya"), terminada && /*#__PURE__*/React.createElement("button", {
     className: "pri",
     onClick: guardar,
     disabled: ocupado
@@ -1526,7 +1584,36 @@ function Admin({
       fontSize: ".88rem",
       color: "var(--mostaza)"
     }
-  }, aviso)), cerradas.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, aviso)), /*#__PURE__*/React.createElement("div", {
+    className: "tarjeta",
+    style: { marginBottom: 22 }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: { fontSize: "1.05rem", marginBottom: 4 }
+  }, "Modo del sondeo"), /*#__PURE__*/React.createElement("p", {
+    style: { color: "var(--tenue)", fontSize: ".87rem", marginTop: 0, marginBottom: 14 }
+  }, respuestas.length > 0 ? "Ya hay respuestas, así que el modo quedó fijo. Para cambiarlo, guarda y reinicia el pulso." : "Se puede cambiar mientras no haya ni una respuesta."), /*#__PURE__*/React.createElement("div", {
+    className: "ops"
+  }, [{
+    id: "vivo",
+    nombre: "En vivo",
+    pista: "Reloj compartido. Todos avanzan juntos, la pregunta se cierra sola."
+  }, {
+    id: "abierto",
+    nombre: "Abierto",
+    pista: "Sin reloj. Cada quien responde a su ritmo, cuando pueda."
+  }].map(m => /*#__PURE__*/React.createElement("button", {
+    key: m.id,
+    className: "op" + ((corrida.modo || "vivo") === m.id ? " sel" : "") + (respuestas.length > 0 ? " bloq" : ""),
+    onClick: () => cambiarModo(m.id),
+    disabled: ocupado || respuestas.length > 0,
+    style: { flexDirection: "column", alignItems: "flex-start", gap: 3 }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: { fontWeight: 500 }
+  }, m.nombre), /*#__PURE__*/React.createElement("span", {
+    style: { fontSize: ".82rem", color: "var(--tenue)" }
+  }, m.pista)))), (corrida.modo || "vivo") === "vivo" && /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: ".84rem", color: "var(--tenue)", marginTop: 14, marginBottom: 0 }
+  }, "Tiempos por pregunta: se configuran en “Preguntas y ajustes”.")), cerradas.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "tarjeta",
     style: {
       marginBottom: 22
@@ -1588,6 +1675,7 @@ function App() {
   const [respuestas, setRespuestas] = useState([]);
   const [mias, setMias] = useState([]);
   const [vista, setVista] = useState("feed");
+  const [pausaEn, setPausaEn] = useState(null);
   const [listo, setListo] = useState(false);
   const [fallo, setFallo] = useState("");
   const arranco = useRef(false);
@@ -1598,6 +1686,9 @@ function App() {
   }, []);
   const cargar = useCallback(async () => {
     try {
+      if (window.PulsoTiempo && !window.PulsoTiempo.sincronizado()) {
+        await window.PulsoTiempo.sincronizar(sb);
+      }
       const { data: aj } = await sb.from("pulso_ajustes").select("*");
       if (aj) {
         const m = {};
@@ -1654,6 +1745,14 @@ function App() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+  const avanzarPorTiempo = useCallback(async () => {
+    if (!corrida || corrida.modo === "abierto") return;
+    try {
+      await sb.rpc("pulso_avanzar_si_expiro", { p_corrida: corrida.id });
+    } catch (e) {}
+    cargar();
+  }, [corrida, cargar]);
+
   const indiceRef = useRef(null);
   useEffect(() => {
     if (!corrida) return;
@@ -1720,6 +1819,7 @@ function App() {
     const nuevas = [...mias, pregunta.id];
     setMias(nuevas);
     LS.set("pulso_mias_" + corrida.id, nuevas);
+    setPausaEn(pregunta.id);
     setConteos(c => ({
       ...c,
       [pregunta.id]: (c[pregunta.id] || 0) + 1
@@ -1784,10 +1884,63 @@ function App() {
     }));
   }
   const total = preguntas.length;
-  const activa = preguntas.find(p => p.orden === corrida.indice_activo);
-  const cerradas = preguntas.filter(p => p.orden < corrida.indice_activo);
-  const terminada = corrida.indice_activo > total || corrida.estado === "finalizada";
+  const abierto = corrida.modo === "abierto";
+  const T = window.PulsoTiempo;
+
+  // En modo abierto cada quien avanza solo: la pregunta activa es
+  // la primera que esa persona no respondió.
+  const activa = abierto ? preguntas.find(p => !mias.includes(p.id)) : preguntas.find(p => p.orden === corrida.indice_activo);
+  const cerradas = abierto ? preguntas.filter(p => mias.includes(p.id)) : preguntas.filter(p => p.orden < corrida.indice_activo);
+  const terminada = abierto ? !activa && preguntas.length > 0 : corrida.indice_activo > total || corrida.estado === "finalizada";
   const respondida = activa && mias.includes(activa.id);
+
+  // La ronda en vivo todavía no arrancó
+  if (!terminada && T && T.sinArrancar(corrida)) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "env"
+    }, cabecera, /*#__PURE__*/React.createElement("div", {
+      className: "aviso"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "ico"
+    }, "✳"), /*#__PURE__*/React.createElement("h2", {
+      style: { fontSize: "1.2rem" }
+    }, "Ya casi"), /*#__PURE__*/React.createElement("p", null, "La primera pregunta aparece en cuanto empecemos.")));
+  }
+
+  // Acaba de responder: ve el resultado de esa pregunta antes de seguir
+  if (pausaEn) {
+    const p = preguntas.find(x => x.id === pausaEn);
+    if (p) {
+      const abiertaAun = !abierto && p.orden === corrida.indice_activo;
+      const puedeVer = p.resultados_visibles !== "al_cerrar" || !abiertaAun;
+      const seguir = () => setPausaEn(null);
+      return /*#__PURE__*/React.createElement("div", {
+        className: "env"
+      }, cabecera, /*#__PURE__*/React.createElement("div", {
+        className: "tarjeta"
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "ok",
+        style: { marginTop: 0, marginBottom: 16 }
+      }, "Tu respuesta quedó registrada."), abiertaAun && window.CuentaRegresiva && /*#__PURE__*/React.createElement(window.CuentaRegresiva, {
+        corrida: corrida,
+        pregunta: p,
+        onExpirar: avanzarPorTiempo
+      }), puedeVer ? /*#__PURE__*/React.createElement(BloqueResultado, {
+        pregunta: p,
+        respuestas: respuestas.filter(r => r.pregunta_id === p.id),
+        participantes: participantes
+      }) : /*#__PURE__*/React.createElement("p", {
+        style: { color: "var(--tenue)", fontSize: ".93rem" }
+      }, "Los resultados se muestran cuando se acabe el tiempo."), abiertaAun && /*#__PURE__*/React.createElement("p", {
+        style: { color: "var(--tenue)", fontSize: ".88rem", marginTop: 14, marginBottom: 0 }
+      }, "Sigue llegando gente. Esto se actualiza solo.")), /*#__PURE__*/React.createElement("div", {
+        className: "salto-top",
+        style: { marginTop: 18 }
+      }, /*#__PURE__*/React.createElement("button", {
+        onClick: seguir
+      }, abiertaAun ? "Ver las demás preguntas" : "Siguiente pregunta", " →")));
+    }
+  }
   if (terminada) {
     return /*#__PURE__*/React.createElement("div", {
       className: "env"
@@ -1835,7 +1988,8 @@ function App() {
       yaRespondio: respondida,
       onEnviar: enviar,
       onVolver: () => setVista("feed"),
-      hayCerradas: cerradas.length > 0
+      hayCerradas: cerradas.length > 0,
+      onExpirar: avanzarPorTiempo
     }));
   }
   return /*#__PURE__*/React.createElement("div", {
